@@ -10,4 +10,5 @@ test2.c
 Debug/*
 ccs/*
 targetConfigs/*
+/Debug/
 MSP430-Ultrasonic.c

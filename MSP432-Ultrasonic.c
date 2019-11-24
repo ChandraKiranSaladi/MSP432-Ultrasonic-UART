@@ -32,6 +32,10 @@ int main(void)
     P1->OUT |= BIT0;                        // P1.0 high
     P1->OUT &= ~BIT0;
 
+    // Configure UART pins
+        P1->SEL0 |= BIT2 | BIT3;                // set 2-UART pin as secondary function
+
+
     P2->DIR &= ~BIT7;            // P2.4 as o
     P2->REN |= BIT7;            // P2.4 pull down enabled
     P2->OUT &= ~BIT7;            // P2.4 initial output Low
@@ -43,45 +47,43 @@ int main(void)
     P2->IE |= BIT7;
     P2->IES &= ~BIT7;
 
-        TIMER_A0->CCTL[0]= TIMER_A_CCTLN_CCIE;                             // CCR0 interrupt enabled
-        TIMER_A0->CCR[0] = 1000-1;                   // 1ms at 1mhz
-        TIMER_A0->CTL = TIMER_A_CTL_TASSEL_2 | TIMER_A_CTL_MC__UP | TIMER_A_CTL_CLR;                  // SMCLK, upmode
+    /*         UART                      */
+    CS->KEY = CS_KEY_VAL;                   // Unlock CS module for register access
+    CS->CTL0 = 0;                           // Reset tuning parameters
+    CS->CTL0 = CS_CTL0_DCORSEL_3;           // Set DCO to 12MHz (nominal, center of 8-16MHz range)
+    CS->CTL1 = CS_CTL1_SELA_2 |             // Select ACLK = REFO
+            CS_CTL1_SELS_3 |                // SMCLK = DCO
+            CS_CTL1_SELM_3;                 // MCLK = DCO
+    CS->KEY = 0;                            // Lock CS module from unintended accesses
 
 
 
-    //    P2->SEL0 |= BIT5;                       // TA0.CCI2A input capture pin, second function
-    //    P2->DIR &= ~BIT5;
-    //
-    //    P4->SEL0 |= BIT2;                       // Set as ACLK pin, second function
-    //    P4->DIR |= BIT2;
-    //
-    //    CS->KEY = CS_KEY_VAL;                   // Unlock CS module for register access
-    //    // Select ACLK = REFO, SMCLK = MCLK = DCO
-    //    CS->CTL1 = CS_CTL1_SELA_2 |
-    //            CS_CTL1_SELS_3 |
-    //            CS_CTL1_SELM_3;
-    //    CS->KEY = 0;                            // Lock CS module from unintended accesses
-    //
-    //    // Timer0_A3 Setup
-    //    TIMER_A0->CCTL[2] = TIMER_A_CCTLN_CM_1 | // Capture rising edge,
-    //            TIMER_A_CCTLN_CCIS_0 |          // Use CCI2A=ACLK,
-    //            TIMER_A_CCTLN_CCIE |            // Enable capture interrupt
-    //            TIMER_A_CCTLN_CAP |             // Enable capture mode,
-    //            TIMER_A_CCTLN_SCS;              // Synchronous capture
-    //
-    //    TIMER_A0->CTL |= TIMER_A_CTL_TASSEL_2 | // Use SMCLK as clock source,
-    //            TIMER_A_CTL_MC__CONTINUOUS |    // Start timer in continuous mode
-    //            TIMER_A_CTL_CLR;                // clear TA0R
-    //
-    //    SCB->SCR |= SCB_SCR_SLEEPONEXIT_Msk;    // Enable sleep on exit from ISR
-    //
-    //    // Ensures SLEEPONEXIT takes effect immediately
-    //    __DSB();
-    //
-    //    // Enable global interrupt
-        __enable_irq();
+    // Configure UART
+    EUSCI_A0->CTLW0 |= EUSCI_A_CTLW0_SWRST; // Put eUSCI in reset
+    EUSCI_A0->CTLW0 = EUSCI_A_CTLW0_SWRST | // Remain eUSCI in reset
+            EUSCI_B_CTLW0_SSEL__SMCLK;      // Configure eUSCI clock source for SMCLK
+    // Baud Rate calculation
+    // 12000000/(16*9600) = 78.125
+    // Fractional portion = 0.125
+    // User's Guide Table 21-4: UCBRSx = 0x10
+    // UCBRFx = int ( (78.125-78)*16) = 2
+    EUSCI_A0->BRW = 78;                     // 12000000/16/9600
+    EUSCI_A0->MCTLW = (2 << EUSCI_A_MCTLW_BRF_OFS) |
+            EUSCI_A_MCTLW_OS16;
+
+    EUSCI_A0->CTLW0 &= ~EUSCI_A_CTLW0_SWRST; // Initialize eUSCI
+    EUSCI_A0->IFG &= ~EUSCI_A_IFG_RXIFG;    // Clear eUSCI RX interrupt flag
+    EUSCI_A0->IE &= ~EUSCI_A_IE_RXIE;        // Disable USCI_A0 RX interrupt
+
+
+    /*              TIMER A0            */
+    TIMER_A0->CCTL[0]= TIMER_A_CCTLN_CCIE;                             // CCR0 interrupt enabled
+    TIMER_A0->CCR[0] = 1000-1;                   // 1ms at 1mhz
+    TIMER_A0->CTL = TIMER_A_CTL_TASSEL_2 | TIMER_A_CTL_MC__UP | TIMER_A_CTL_CLR;                  // SMCLK, upmode
+
+    __enable_irq();
     NVIC->ISER[1] = 1 << ((PORT2_IRQn) & 31);
-          NVIC->ISER[0] = 1 << ((TA0_0_IRQn) & 31);
+    NVIC->ISER[0] = 1 << ((TA0_0_IRQn) & 31);
     //    __low_power_mode_3();
     //    __no_operation();
 
@@ -97,25 +99,44 @@ int main(void)
         P2->IES &= ~BIT7;         // rising edge on ECHO pin
         Delay(30000);          // delay for 30ms (after this time echo times out if there is no object detected)
         distance = sensor/58;           // converting ECHO lenght into cm
-                if(distance < 100 && distance != 0)
-                    P1->OUT |= BIT0;  //turning LED on if distance is less than 20cm and if distance isn't 0.
-                else
-                    P1->OUT &= ~BIT0;
+        char buffer[50];
+        sprintf(buffer,"distance is %d\n",distance);
+        uart_puts(buffer);
+        if(distance < 100 && distance != 0)
+            P1->OUT |= BIT0;  //turning LED on if distance is less than 20cm and if distance isn't 0.
+        else
+            P1->OUT &= ~BIT0;
 
     }
-    // Validate the captured clocks
-    //    for (i = 0; i < (NUMBER_TIMER_CAPTURES - 1); i++)
-    //    {
-    //        timerAcaptureCalcVal[i] = timerAcaptureValues[i + 1] - timerAcaptureValues[i];
-    //
-    //        if ((timerAcaptureCalcVal[i] > (REFO_CYCLES_TO_MCLK + 10)) ||
-    //                (timerAcaptureCalcVal[i] < (REFO_CYCLES_TO_MCLK - 10)))
-    //        {
-    //            // Set an error flag
-    //            error = 1;
-    //        }
-    //    }
 
+}
+
+int uart_puts(const char *str)
+{
+    int status = -1;
+
+    if (str != '\0') {
+        status = 0;
+
+        while (*str != '\0') {
+            /* Wait for the transmit buffer to be ready */
+            while (!(EUSCI_A0->IFG & EUSCI_A_IFG_TXIFG));
+
+            /* Transmit data */
+            EUSCI_A0->TXBUF  = *str;
+
+            /* If there is a line-feed, add a carriage return */
+            if (*str == '\n') {
+                /* Wait for the transmit buffer to be ready */
+                while (!(EUSCI_A0->IFG & EUSCI_A_IFG_TXIFG));
+                EUSCI_A0->TXBUF = '\r';
+            }
+
+            str++;
+        }
+    }
+
+    return status;
 }
 
 // Timer A0 interrupt service routine
@@ -134,8 +155,9 @@ void PORT2_IRQHandler(void)
         else
         {
             sensor = (long)miliseconds*1000 + (long)TIMER_A0->R;    //calculating ECHO lenght
-//            P1->OUT ^= BIT0;
+            //            P1->OUT ^= BIT0;
             P2->IES &=  ~BIT7;  //falling edge
+
         }
         P2->IFG &= ~BIT7;             //clear flag
     }
@@ -143,9 +165,9 @@ void PORT2_IRQHandler(void)
 
 void TA0_0_IRQHandler(void)
 {
-//    P1->OUT ^= BIT0;
+    //    P1->OUT ^= BIT0;
     miliseconds++;
     TIMER_A0->CCTL[0] &= ~TIMER_A_CCTLN_CCIFG;
-//    printf("milliseconds: "+miliseconds);
+    //    printf("milliseconds: "+miliseconds);
 }
 
