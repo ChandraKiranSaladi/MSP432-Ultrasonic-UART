@@ -10,5 +10,4 @@ test2.c
 Debug/*
 ccs/*
 targetConfigs/*
-README.md
-MSP432-Ultrasonic.c
+MSP430-Ultrasonic.c
