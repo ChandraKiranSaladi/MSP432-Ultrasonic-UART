@@ -1,0 +1,14 @@
+.ccsproject
+.cproject
+.project
+msp432p401r.cmd
+msp432p401x_ta0_capture.c
+system_msp432p401r.c
+test2.c
+.launches/*
+.settings/*
+Debug/*
+ccs/*
+targetConfigs/*
+README.md
+MSP432-Ultrasonic.c
