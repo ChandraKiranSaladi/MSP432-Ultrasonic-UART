@@ -27,7 +27,7 @@ and <a href="https://www.ti.com/lit/ug/slau356i/slau356i.pdf">Technical Referenc
 The sensor gets triggered by supplying 10 microsecond wide pulse. The sensor generates a pulse from the echo pin with a period proportional to the distance of the obstacle from sensor.
 * Echo pin from the sensor is connected to a voltage divider which reduces it to 3.3V, tolerable by the MSP, to Port 2 Pin 7. 
 * Trigger pin of sensor is connected to Port2 Pin 6. 
-* MSP432 board is connected to a computer
+* MSP432 board is connected to a computer via USB
 
 ## Important Note
 
@@ -42,6 +42,11 @@ The sensor gets triggered by supplying 10 microsecond wide pulse. The sensor gen
 ***
 ### **Execution** 
 
+1) Read description and important note before reading these instructions
+2) Create new project inside Code Composer Studio
+3) Copy the file contents of MSP432-Ultrasonic.c into your editor
+4) Open putty and select serial with COM port ( check device manager ) and baud rate: 9600
+5) Execute the code and see values rush to putty
 
 
 #### Feedback

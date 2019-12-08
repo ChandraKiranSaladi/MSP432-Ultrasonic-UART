@@ -27,6 +27,16 @@ int main(void)
     WDT_A->CTL = WDT_A_CTL_PW |             // Stop watchdog timer
             WDT_A_CTL_HOLD;
 
+    /*         UART                      */
+    CS->KEY = CS_KEY_VAL;                   // Unlock CS module for register access
+    CS->CTL0 = 0;                           // Reset tuning parameters
+    CS->CTL0 = CS_CTL0_DCORSEL_3;           // Set DCO to 12MHz (nominal, center of 8-16MHz range)
+    CS->CTL1 = CS_CTL1_SELA_2 |             // Select ACLK = REFO
+            CS_CTL1_SELS_3 |                // SMCLK = DCO
+            CS_CTL1_SELM_3;                 // MCLK = DCO
+    CS->KEY = 0;                            // Lock CS module from unintended accesses
+
+
     // Configure GPIO
     P1->DIR |= BIT0;                        // Set P1.0 as output
     P1->OUT |= BIT0;                        // P1.0 high
@@ -46,15 +56,6 @@ int main(void)
     P2->IFG = 0;
     P2->IE |= BIT7;
     P2->IES &= ~BIT7;
-
-    /*         UART                      */
-    CS->KEY = CS_KEY_VAL;                   // Unlock CS module for register access
-    CS->CTL0 = 0;                           // Reset tuning parameters
-    CS->CTL0 = CS_CTL0_DCORSEL_3;           // Set DCO to 12MHz (nominal, center of 8-16MHz range)
-    CS->CTL1 = CS_CTL1_SELA_2 |             // Select ACLK = REFO
-            CS_CTL1_SELS_3 |                // SMCLK = DCO
-            CS_CTL1_SELM_3;                 // MCLK = DCO
-    CS->KEY = 0;                            // Lock CS module from unintended accesses
 
 
 
@@ -77,12 +78,14 @@ int main(void)
 
 
     /*              TIMER A0            */
-    TIMER_A0->CCTL[0]= TIMER_A_CCTLN_CCIE;                             // CCR0 interrupt enabled
+    TIMER_A0->CCTL[0]= TIMER_A_CCTLN_CCIE;       // CCR0 interrupt enabled
     TIMER_A0->CCR[0] = 1000-1;                   // 1ms at 1mhz
     TIMER_A0->CTL = TIMER_A_CTL_TASSEL_2 | TIMER_A_CTL_MC__UP | TIMER_A_CTL_CLR;                  // SMCLK, upmode
 
-    __enable_irq();
-    NVIC->ISER[1] = 1 << ((PORT2_IRQn) & 31);
+    __enable_irq();             // Enables interrupts to the system
+
+    NVIC->ISER[1] = 1 << ((PORT2_IRQn) & 31);       // Very important to assign interrupts to the NVIC vector otherwise they would not
+                                                    // considered
     NVIC->ISER[0] = 1 << ((TA0_0_IRQn) & 31);
     //    __low_power_mode_3();
     //    __no_operation();
@@ -92,17 +95,17 @@ int main(void)
         //        P2->IE &= ~BIT7;          // disable interupt
         P2->DIR |= BIT6;          // trigger pin as output
         P2->OUT |= BIT6;          // generate pulse
-        Delay(100);             // for 10us
-        P2->OUT &= ~BIT6;                 // stop pulse
+        Delay(100);               // for 10us
+        P2->OUT &= ~BIT6;         // stop pulse
         //        P2->IE |= BIT7;          // disable interupt
-        P2->IFG = 0;                   // clear flag just in case anything happened before
+        P2->IFG = 0;              // clear P2 interrupt just in case anything happened before
         P2->IES &= ~BIT7;         // rising edge on ECHO pin
-        Delay(30000);          // delay for 30ms (after this time echo times out if there is no object detected)
-        distance = sensor/58;           // converting ECHO lenght into cm
+        Delay(30000);             // delay for 30ms (after this time echo times out if there is no object detected)
+        distance = sensor/58;     // converting ECHO lenght into cm
         char buffer[50];
         sprintf(buffer,"distance is %d\n",distance);
         uart_puts(buffer);
-        if(distance < 100 && distance != 0)
+        if(distance < 300 && distance != 0)
             P1->OUT |= BIT0;  //turning LED on if distance is less than 20cm and if distance isn't 0.
         else
             P1->OUT &= ~BIT0;
@@ -154,7 +157,7 @@ void PORT2_IRQHandler(void)
         }
         else
         {
-            sensor = (long)miliseconds*1000 + (long)TIMER_A0->R;    //calculating ECHO lenght
+            sensor = (long)miliseconds*1000 + (long)TIMER_A0->R;    //calculating ECHO length
             //            P1->OUT ^= BIT0;
             P2->IES &=  ~BIT7;  //falling edge
 
@@ -165,7 +168,7 @@ void PORT2_IRQHandler(void)
 
 void TA0_0_IRQHandler(void)
 {
-    //    P1->OUT ^= BIT0;
+    //    Interrupt gets triggered for every clock cycle in SMCLK Mode counting number of pulses
     miliseconds++;
     TIMER_A0->CCTL[0] &= ~TIMER_A_CCTLN_CCIFG;
     //    printf("milliseconds: "+miliseconds);
