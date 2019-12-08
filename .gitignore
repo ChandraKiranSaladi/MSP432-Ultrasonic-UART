@@ -1,3 +1,4 @@
+MSP430-Ultrasonic.c
 .ccsproject
 .cproject
 .project
@@ -11,4 +12,3 @@ Debug/*
 ccs/*
 targetConfigs/*
 /Debug/
-MSP430-Ultrasonic.c
